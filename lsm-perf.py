@@ -63,7 +63,8 @@ def evaluating_kernel(kernel_path, img_path, workload_path, keyfile):
 
 class VM:
     def __init__(self, kernel_path, img_path, keyfile):
-        self.process = local['vm'].popen(['start', '-k', kernel_path, '-i', img_path])
+        qemu_args = construct_qemu_args(kernel_path, img_path)
+        self.process = local['qemu-system-x86_64'].popen(qemu_args)
         self.ssh = None
         self.key = keyfile
 
@@ -94,6 +95,28 @@ class VM:
         to = self.ssh.path(dst_remote)
         plumbum.path.utils.copy(fro, to)
 
+
+def construct_qemu_args(kernel_path, image_path, isolcpus=[2,3]):
+    return [
+        '-nographic',
+        '-s',
+        '-machine', 'accel=kvm',
+        '-cpu', 'host',
+        '-device', 'e1000,netdev=net0',
+        '-netdev', 'user,id=net0,hostfwd=tcp::5555-:22',
+        '-append', 
+            'console=ttyS0,115200 root=/dev/sda rw nokaslr isolcpus=%s' % ','.join(map(str,isolcpus)),
+        '-smp', '4',
+        '-m', '4G',
+        '-drive', 'if=none,id=hd,file=%s,format=raw' % image_path,
+        '-device', 'virtio-scsi-pci,id=scsi',
+        '-device', 'scsi-hd,drive=hd',
+        '-device', 'virtio-rng-pci,max-bytes=1024,period=1000',
+        '-qmp', 'tcp:localhost:4444,server,nowait',
+        '-serial', 'mon:stdio',
+        '-kernel', '%s' % kernel_path,
+        '-name', 'lsm_perf_vm,debug-threads=on'
+    ]
 
 def print_eta(kernel_name, info=""):
     sys.stdout.write('\r\tEvaluating %s: %s' % (kernel_name, info) + ' ' * 20)
