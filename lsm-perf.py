@@ -3,12 +3,15 @@
 import argparse
 import time
 import plumbum
+import sys
+import statistics
 from plumbum import local, SshMachine # TODO: requirements
 
 
-NUMBER_OF_ROUNDS = 1
-NUMBER_OF_REPETITIONS = 2
-ON_VM_WORKLOAD_PATH = "~/lsm-perf-workload"
+NUMBER_OF_ROUNDS = 3
+NUMBER_OF_REPETITIONS = 50
+WARMUP_RUNS = 5
+ON_VM_WORKLOAD_PATH = '~/lsm-perf-workload'
 QEMU_EXIT_CMD=b'\x01cq\n' # -> ctrl+a c q
 
 
@@ -20,22 +23,40 @@ def main(args):
     return 0
 
 
+def print_eta(kernel_name, info=""):
+    sys.stdout.write('\r\tEvaluating %s: %s            ' % (kernel_name, info))
+    sys.stdout.flush()
+
+
 def evaluating_kernel(kernel_path, img_path, workload_path, keyfile):
+    results = []
+    name = kernel_path[kernel_path.rfind('/') + 1:]
+    print_eta(name, info='connecting')
+
     with VM(kernel_path, img_path, keyfile) as vm:
-        print('\tEvaluating %s: ' % vm.name)
-        print(vm.ssh['ls']())
         vm.scp_to(workload_path, ON_VM_WORKLOAD_PATH)
-        print(vm.ssh['ls']())
         work_cmd = vm.ssh[ON_VM_WORKLOAD_PATH]
-        results = [int(work_cmd().strip()) for _ in range(NUMBER_OF_REPETITIONS)]
-        vm.ssh['rm'][ON_VM_WORKLOAD_PATH]()
-        print(results)
+
+        print_eta(name, info='Running warm up')
+        for _ in range(WARMUP_RUNS):
+            work_cmd()
+
+        for i in range(NUMBER_OF_REPETITIONS):
+            results.append(int(work_cmd().strip()))
+            percentage = (i + 1) * 100 / NUMBER_OF_REPETITIONS
+            print_eta(name, info='%d%%' % percentage)
+
+        vm.ssh.path(ON_VM_WORKLOAD_PATH).delete()
+
+    stats = '\taverage=%d, stdev=%d' % (statistics.mean(results), statistics.stdev(results))
+    print_eta(name, info=stats)
+    print()
+    return results
 
 
 class VM:
     def __init__(self, kernel_path, img_path, keyfile):
         self.process = local['vm'].popen(['start', '-k', kernel_path, '-i', img_path])
-        self.name = kernel_path[kernel_path.rfind('/') + 1:]
         self.ssh = None
         self.key = keyfile
 
@@ -57,6 +78,8 @@ class VM:
             self.ssh.close()
             self.ssh = None
         self.process.stdin.write(QEMU_EXIT_CMD)
+        self.process.terminate()
+        time.sleep(0.5)
 
     def scp_to(self, src_local, dst_remote):
         assert self.ssh is not None
