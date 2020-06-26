@@ -16,16 +16,23 @@ QEMU_EXIT_CMD=b'\x01cq\n' # -> ctrl+a c q
 
 
 def main(args):
-    for round in range(NUMBER_OF_ROUNDS):
-        print('Starting round %d' % round)
-        for kernel in args.kernels:
-            evaluating_kernel(kernel.name, args.image.name, args.workload.name, args.key.name)
+    try:
+        init_output_file(args.out)
+        for round in range(NUMBER_OF_ROUNDS):
+            print('Starting round %d' % round)
+            for kernel in args.kernels:
+                results = evaluating_kernel(
+                        kernel_path=kernel.name,
+                        img_path=args.image.name,
+                        workload_path=args.workload.name,
+                        keyfile=args.key.name
+                    )
+                write_results_to_file(args.out, kernel.name, round, results)
+    except KeyboardInterrupt:
+        print('\nExit prematurely')
+    finally:
+        args.out.close()
     return 0
-
-
-def print_eta(kernel_name, info=""):
-    sys.stdout.write('\r\tEvaluating %s: %s            ' % (kernel_name, info))
-    sys.stdout.flush()
 
 
 def evaluating_kernel(kernel_path, img_path, workload_path, keyfile):
@@ -88,6 +95,22 @@ class VM:
         plumbum.path.utils.copy(fro, to)
 
 
+def print_eta(kernel_name, info=""):
+    sys.stdout.write('\r\tEvaluating %s: %s' % (kernel_name, info) + ' ' * 20)
+    sys.stdout.flush()
+
+
+def init_output_file(file):
+    columns = ['kernel path', 'round'] + ['run %d' % i for i in range(NUMBER_OF_REPETITIONS)]
+    file.write(','.join(columns) + '\n')
+
+
+def write_results_to_file(file, kernel_path, round, results):
+    row = [kernel_path, round] + results
+    file.write(','.join([str(x) for x in row]) + '\n')
+    file.flush()
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description=
                         'Compares the performances of several kernels on the same workload.')
@@ -102,6 +125,8 @@ def parse_args():
     parser.add_argument('-key', type=argparse.FileType('r'), default='~/.ssh/id_rsa', 
                         help='Path of the RSA key to connect to the VM. ' + 
                         'It must be in the list of authorized keys in the image.')
+    parser.add_argument('-o', '--out', type=argparse.FileType('w'), default='lsm-perf.csv', 
+                        help='Path of the output file.')
     
     return parser.parse_args()
 
