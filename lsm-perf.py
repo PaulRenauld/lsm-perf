@@ -24,7 +24,7 @@ def main(args):
             for kernel in args.kernels:
                 results = evaluate_kernel(
                     kernel_path=kernel.name,
-                    filesystem_path=args.image.name,
+                    filesystem_img_path=args.image.name,
                     workload_path=args.workload.name,
                     keyfile=args.key.name
                 )
@@ -36,7 +36,7 @@ def main(args):
     return 0
 
 
-def evaluate_kernel(kernel_path, filesystem_path, workload_path, keyfile):
+def evaluate_kernel(kernel_path, filesystem_img_path, workload_path, keyfile):
     """Starts a VM with the kernel and evaluates its
     performances on the provided workload
     """
@@ -44,7 +44,7 @@ def evaluate_kernel(kernel_path, filesystem_path, workload_path, keyfile):
     name = os.path.basename(kernel_path)
     print_eta(name, info='connecting')
 
-    with VM(kernel_path, filesystem_path, keyfile) as vm:
+    with VM(kernel_path, filesystem_img_path, keyfile) as vm:
         vm.scp_to(workload_path, ON_VM_WORKLOAD_PATH)
         work_cmd = vm.ssh[ON_VM_WORKLOAD_PATH]
 
@@ -70,9 +70,9 @@ class VM:
     """Represents a qemu VM with an SSH connection.
     To use with the `with` construct
     """
-    def __init__(self, kernel_path, filesystem_path, keyfile):
+    def __init__(self, kernel_path, filesystem_img_path, keyfile):
         """Starts the qemu VM"""
-        qemu_args = VM.__construct_qemu_args(kernel_path, filesystem_path)
+        qemu_args = VM.__construct_qemu_args(kernel_path, filesystem_img_path)
         self.process = local['qemu-system-x86_64'].popen(qemu_args)
         self.ssh = None
         self.key = keyfile
@@ -105,10 +105,10 @@ class VM:
                              'SSH connection, i.e. inside a `with` block.')
         src = local.path(src_local)
         dst = self.ssh.path(dst_remote)
-        plumbum.path.utils.copy(scr, dst)
+        plumbum.path.utils.copy(src, dst)
 
     @staticmethod
-    def __construct_qemu_args(kernel_path, filesystem_path):
+    def __construct_qemu_args(kernel_path, filesystem_img_path):
         """Qemu arguments similar to what `vm start` produces"""
         return [
             '-nographic',
@@ -120,7 +120,7 @@ class VM:
             '-append', 'console=ttyS0,115200 root=/dev/sda rw nokaslr',
             '-smp', '4',
             '-m', '4G',
-            '-drive', 'if=none,id=hd,file=%s,format=raw' % filesystem_path,
+            '-drive', 'if=none,id=hd,file=%s,format=raw' % filesystem_img_path,
             '-device', 'virtio-scsi-pci,id=scsi',
             '-device', 'scsi-hd,drive=hd',
             '-device', 'virtio-rng-pci,max-bytes=1024,period=1000',
