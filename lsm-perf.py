@@ -36,8 +36,7 @@ def main(args):
 
 
 def evaluating_kernel(kernel_path, img_path, workload_path, keyfile):
-    """
-    Starts a VM with the kernel and evaluates its 
+    """Starts a VM with the kernel and evaluates its
     performances on the provided workload
     """
     results = []
@@ -67,10 +66,9 @@ def evaluating_kernel(kernel_path, img_path, workload_path, keyfile):
 
 
 class VM:
-"""
-Represents a qemu VM with an SSH connection.
-To use with the `with` construct
-"""
+    """Represents a qemu VM with an SSH connection.
+    To use with the `with` construct
+    """
     def __init__(self, kernel_path, img_path, keyfile):
         """Starts the qemu VM"""
         qemu_args = construct_qemu_args(kernel_path, img_path)
