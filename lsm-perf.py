@@ -8,8 +8,8 @@ import statistics
 from plumbum import local, SshMachine  # TODO: requirements
 
 
-NUMBER_OF_ROUNDS = 3
-NUMBER_OF_REPETITIONS = 50
+ROUNDS = 3
+REPETITIONS_PER_ROUND = 50
 WARMUP_RUNS = 5
 ON_VM_WORKLOAD_PATH = '~/lsm-perf-workload'
 QEMU_EXIT_CMD = b'\x01cq\n'  # -> ctrl+a c q
@@ -18,7 +18,7 @@ QEMU_EXIT_CMD = b'\x01cq\n'  # -> ctrl+a c q
 def main(args):
     try:
         init_output_file(args.out)
-        for round in range(NUMBER_OF_ROUNDS):
+        for round in range(ROUNDS):
             print('Starting round %d' % round)
             for kernel in args.kernels:
                 results = evaluating_kernel(
@@ -36,6 +36,10 @@ def main(args):
 
 
 def evaluating_kernel(kernel_path, img_path, workload_path, keyfile):
+    """
+    Starts a VM with the kernel and evaluates its 
+    performances on the provided workload
+    """
     results = []
     name = kernel_path[kernel_path.rfind('/') + 1:]
     print_eta(name, info='connecting')
@@ -48,9 +52,9 @@ def evaluating_kernel(kernel_path, img_path, workload_path, keyfile):
         for _ in range(WARMUP_RUNS):
             work_cmd()
 
-        for i in range(NUMBER_OF_REPETITIONS):
+        for i in range(REPETITIONS_PER_ROUND):
             results.append(int(work_cmd().strip()))
-            percentage = (i + 1) * 100 / NUMBER_OF_REPETITIONS
+            percentage = (i + 1) * 100 / REPETITIONS_PER_ROUND
             print_eta(name, info='%d%%' % percentage)
 
         vm.ssh.path(ON_VM_WORKLOAD_PATH).delete()
@@ -63,14 +67,19 @@ def evaluating_kernel(kernel_path, img_path, workload_path, keyfile):
 
 
 class VM:
+"""
+Represents a qemu VM with an SSH connection.
+To use with the `with` construct
+"""
     def __init__(self, kernel_path, img_path, keyfile):
+        """Starts the qemu VM"""
         qemu_args = construct_qemu_args(kernel_path, img_path)
         self.process = local['qemu-system-x86_64'].popen(qemu_args)
         self.ssh = None
         self.key = keyfile
 
     def __enter__(self):
-        # Initialize ssh connection
+        """Initialize ssh connection"""
         c = 5
         while self.ssh is None:
             time.sleep(1)
@@ -84,6 +93,7 @@ class VM:
         return self
 
     def __exit__(self, type, value, traceback):
+        """Stops the SSH connection and the VM"""
         if self.ssh is not None:
             self.ssh.close()
             self.ssh = None
@@ -92,13 +102,15 @@ class VM:
         time.sleep(0.5)
 
     def scp_to(self, src_local, dst_remote):
+        """Send a file from the host to the VM"""
         assert self.ssh is not None
         fro = local.path(src_local)
         to = self.ssh.path(dst_remote)
         plumbum.path.utils.copy(fro, to)
 
 
-def construct_qemu_args(kernel_path, image_path):
+def construct_qemu_args(kernel_path, img_path):
+    """Qemu arguments similar to what `vm start` produces"""
     return [
         '-nographic',
         '-s',
@@ -109,7 +121,7 @@ def construct_qemu_args(kernel_path, image_path):
         '-append', 'console=ttyS0,115200 root=/dev/sda rw nokaslr',
         '-smp', '4',
         '-m', '4G',
-        '-drive', 'if=none,id=hd,file=%s,format=raw' % image_path,
+        '-drive', 'if=none,id=hd,file=%s,format=raw' % img_path,
         '-device', 'virtio-scsi-pci,id=scsi',
         '-device', 'scsi-hd,drive=hd',
         '-device', 'virtio-rng-pci,max-bytes=1024,period=1000',
@@ -121,17 +133,20 @@ def construct_qemu_args(kernel_path, image_path):
 
 
 def print_eta(kernel_name, info=""):
+    """Updates the status of the evaluation of a kernel"""
     sys.stdout.write('\r\tEvaluating %s: %s' % (kernel_name, info) + ' ' * 20)
     sys.stdout.flush()
 
 
 def init_output_file(file):
+    """Writes the header in the result file"""
     columns = (['kernel path', 'round'] +
-               ['run %d' % i for i in range(NUMBER_OF_REPETITIONS)])
+               ['run %d' % i for i in range(REPETITIONS_PER_ROUND)])
     file.write(','.join(columns) + '\n')
 
 
 def write_results_to_file(file, kernel_path, round, results):
+    """Writes the results of the evaluation of a kernel to the file"""
     row = [kernel_path, round] + results
     file.write(','.join([str(x) for x in row]) + '\n')
     file.flush()
