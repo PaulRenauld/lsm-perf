@@ -16,6 +16,14 @@ QEMU_EXIT_CMD = b'\x01cq\n'  # -> ctrl+a c q
 
 
 def main(args):
+    if args.cpu:
+        print(('CPU %(c0)d will run qemu system and CPU %(c1)d will run '
+               'the workload. Make sure your kernel was started with '
+               '`isolcpus=%(c0)d,%(c1)d`.')
+               % {'c0': args.cpu[0], 'c1': args.cpu[1]})
+    else:
+        print('No dedicated CPUs provided.')
+
     try:
         init_output_file(args.out)
         for round in range(ROUNDS):
@@ -25,7 +33,8 @@ def main(args):
                     kernel_path=kernel.name,
                     img_path=args.image.name,
                     workload_path=args.workload.name,
-                    keyfile=args.key.name
+                    keyfile=args.key.name,
+                    cpus=args.cpu,
                 )
                 write_results_to_file(args.out, kernel.name, round, results)
     except KeyboardInterrupt:
@@ -35,7 +44,7 @@ def main(args):
     return 0
 
 
-def evaluating_kernel(kernel_path, img_path, workload_path, keyfile):
+def evaluating_kernel(kernel_path, img_path, workload_path, keyfile, cpus):
     """Starts a VM with the kernel and evaluates its
     performances on the provided workload
     """
@@ -172,8 +181,18 @@ def parse_args():
     parser.add_argument(
         '-o', '--out', type=argparse.FileType('w'), default='lsm-perf.csv',
         help='Path of the output file.')
-
-    return parser.parse_args()
+    parser.add_argument(
+        '-c', '--cpu', type=int, default=[], nargs='*',
+        help=('CPUs that should be used to run the VM. \n'
+              'Provide two CPUs [x,y], qemus-system will be assigned to x, '
+              'and the workload will be run on y. These CPUs should be '
+              'isolated (i.e. start your machine with `isolcpus=x,y`)\n'
+              'Keep this list empty to not assign CPUs'))
+    args = parser.parse_args()
+    if len(args.cpu) not in [0, 2]:
+        parser.error(
+            'Incorrect number of CPUs provided: expects either 0 or 2')
+    return args
 
 
 if __name__ == "__main__":
