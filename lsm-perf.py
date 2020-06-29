@@ -9,11 +9,11 @@ import os
 from plumbum import local, SshMachine  # TODO: requirements
 
 
-ROUNDS = 3
-REPETITIONS_PER_ROUND = 50
+ROUNDS = 1
+REPETITIONS_PER_ROUND = 2
 WARMUP_RUNS = 5
 ON_VM_WORKLOAD_PATH = '~/lsm-perf-workload'
-QEMU_EXIT_CMD = b'\x01cq\n'  # -> ctrl+a c q
+HOST_PORT = 5555
 
 
 def main(args):
@@ -22,7 +22,7 @@ def main(args):
         for round in range(ROUNDS):
             print('Starting round %d' % round)
             for kernel in args.kernels:
-                results = evaluating_kernel(
+                results = evaluate_kernel(
                     kernel_path=kernel.name,
                     filesystem_path=args.image.name,
                     workload_path=args.workload.name,
@@ -72,7 +72,7 @@ class VM:
     """
     def __init__(self, kernel_path, filesystem_path, keyfile):
         """Starts the qemu VM"""
-        qemu_args = construct_qemu_args(kernel_path, filesystem_path)
+        qemu_args = VM.__construct_qemu_args(kernel_path, filesystem_path)
         self.process = local['qemu-system-x86_64'].popen(qemu_args)
         self.ssh = None
         self.key = keyfile
@@ -84,7 +84,7 @@ class VM:
             time.sleep(1)
             try:
                 self.ssh = SshMachine(
-                    '127.0.0.1', user='root', port=5555, keyfile=self.key)
+                    '127.0.0.1', user='root', port=HOST_PORT, keyfile=self.key)
             except (EOFError, plumbum.machines.session.SSHCommsError) as e:
                 c -= 1
                 if c == 0:
@@ -96,39 +96,39 @@ class VM:
         if self.ssh is not None:
             self.ssh.close()
             self.ssh = None
-        self.process.stdin.write(QEMU_EXIT_CMD)
         self.process.terminate()
-        time.sleep(0.5)
 
     def scp_to(self, src_local, dst_remote):
         """Send a file from the host to the VM"""
-        assert self.ssh is not None
-        fro = local.path(src_local)
-        to = self.ssh.path(dst_remote)
-        plumbum.path.utils.copy(fro, to)
+        if self.ssh is None:
+            raise ValueError('`VM.scp_to` must be used with an established '
+                             'SSH connection, i.e. inside a `with` block.')
+        src = local.path(src_local)
+        dst = self.ssh.path(dst_remote)
+        plumbum.path.utils.copy(scr, dst)
 
-
-def construct_qemu_args(kernel_path, filesystem_path):
-    """Qemu arguments similar to what `vm start` produces"""
-    return [
-        '-nographic',
-        '-s',
-        '-machine', 'accel=kvm',
-        '-cpu', 'host',
-        '-device', 'e1000,netdev=net0',
-        '-netdev', 'user,id=net0,hostfwd=tcp::5555-:22',
-        '-append', 'console=ttyS0,115200 root=/dev/sda rw nokaslr',
-        '-smp', '4',
-        '-m', '4G',
-        '-drive', 'if=none,id=hd,file=%s,format=raw' % filesystem_path,
-        '-device', 'virtio-scsi-pci,id=scsi',
-        '-device', 'scsi-hd,drive=hd',
-        '-device', 'virtio-rng-pci,max-bytes=1024,period=1000',
-        '-qmp', 'tcp:localhost:4444,server,nowait',
-        '-serial', 'mon:stdio',
-        '-kernel', '%s' % kernel_path,
-        '-name', 'lsm_perf_vm,debug-threads=on'
-    ]
+    @staticmethod
+    def __construct_qemu_args(kernel_path, filesystem_path):
+        """Qemu arguments similar to what `vm start` produces"""
+        return [
+            '-nographic',
+            '-s',
+            '-machine', 'accel=kvm',
+            '-cpu', 'host',
+            '-device', 'e1000,netdev=net0',
+            '-netdev', 'user,id=net0,hostfwd=tcp::%d-:22' % HOST_PORT,
+            '-append', 'console=ttyS0,115200 root=/dev/sda rw nokaslr',
+            '-smp', '4',
+            '-m', '4G',
+            '-drive', 'if=none,id=hd,file=%s,format=raw' % filesystem_path,
+            '-device', 'virtio-scsi-pci,id=scsi',
+            '-device', 'scsi-hd,drive=hd',
+            '-device', 'virtio-rng-pci,max-bytes=1024,period=1000',
+            '-qmp', 'tcp:localhost:4444,server,nowait',
+            '-serial', 'mon:stdio',
+            '-kernel', '%s' % kernel_path,
+            '-name', 'lsm_perf_vm,debug-threads=on'
+        ]
 
 
 def print_eta(kernel_name, info=""):
