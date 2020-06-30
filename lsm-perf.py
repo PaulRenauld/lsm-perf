@@ -37,8 +37,14 @@ def main(args):
 
 
 def evaluate_kernel(kernel_path, filesystem_img_path, workload_path, keyfile):
-    """Starts a VM with the kernel and evaluates its
-    performances on the provided workload
+    """Start a VM with the kernel and evaluates its performances
+
+    :param kernel_path: Path of the kernel's bzImage
+    :param filesystem_img_path: Path of the filesystem image (.img)
+    :param workload_path: Path of the compiled workload program
+    :param keyfile: Path of the rsa key that is authorized on the image
+    :return: time measurements printed by each run of the workload
+    :rtype: list[int]
     """
     results = []
     name = os.path.basename(kernel_path)
@@ -67,39 +73,64 @@ def evaluate_kernel(kernel_path, filesystem_img_path, workload_path, keyfile):
 
 
 class VM:
-    """Represents a qemu VM with an SSH connection.
-    To use with the `with` construct
     """
+    Manage a qemu-systemt virtual machine.
+
+    It will be started with `__init__` and the ssh connection will be
+    established with `__enter__`, so any ssh operation should be done
+    inside a `with` block.
+
+    :ivar ssh: plumbum.SshMachine object, useful to run commands on
+               the VM. It should only be used inside a `with` block.
+    :ivar process: popen process of qemu, useful to send signals
+                   or input to qemu.
+
+    :example:
+        with VM('bzImage', 'debian.img', '~/.ssh/id_rsa') as vm:
+            vm.shh['ls']
+    """
+
     def __init__(self, kernel_path, filesystem_img_path, keyfile):
-        """Starts the qemu VM"""
+        """Start the qemu VM (non blocking)
+
+        :param kernel_path: Path of the kernel's bzImage
+        :param filesystem_img_path: Path of the filesystem image (.img)
+        :param keyfile: Path of rsa key that is authorized on the image
+        """
         qemu_args = VM.__construct_qemu_args(kernel_path, filesystem_img_path)
         self.process = local['qemu-system-x86_64'].popen(qemu_args)
         self.ssh = None
         self.key = keyfile
 
     def __enter__(self):
-        """Initialize ssh connection"""
-        c = 5
+        """Initialize the ssh connection (blocks until success)"""
+        retries = 5
         while self.ssh is None:
             time.sleep(1)
             try:
                 self.ssh = SshMachine(
                     '127.0.0.1', user='root', port=HOST_PORT, keyfile=self.key)
             except (EOFError, plumbum.machines.session.SSHCommsError) as e:
-                c -= 1
-                if c == 0:
+                retries -= 1
+                if retries == 0:
                     raise e
         return self
 
     def __exit__(self, type, value, traceback):
-        """Stops the SSH connection and the VM"""
+        """Stop the SSH connection and the VM"""
         if self.ssh is not None:
             self.ssh.close()
             self.ssh = None
         self.process.terminate()
 
     def scp_to(self, src_local, dst_remote):
-        """Send a file from the host to the VM"""
+        """Send a file from the host to the VM
+
+        :param src_local: local path of the file to send
+        :param dst_remote: destination path on the vm
+        :raises ValueError: when the ssh connection is not established,
+                            i.e. when not used inside a `with` block
+        """
         if self.ssh is None:
             raise ValueError('`VM.scp_to` must be used with an established '
                              'SSH connection, i.e. inside a `with` block.')
@@ -152,6 +183,7 @@ def write_results_to_file(file, kernel_path, round, results):
 
 
 def parse_args():
+    """Parse arguments with argparse"""
     parser = argparse.ArgumentParser(
         description=('Compares the performances of several kernels'
                      ' on the same workload.'))
