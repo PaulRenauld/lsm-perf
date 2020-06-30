@@ -14,6 +14,7 @@ REPETITIONS_PER_ROUND = 2
 WARMUP_RUNS = 5
 ON_VM_WORKLOAD_PATH = '~/lsm-perf-workload'
 HOST_PORT = 5555
+SSH_MAX_RETRY = 5
 
 
 def main(args):
@@ -74,7 +75,7 @@ def evaluate_kernel(kernel_path, filesystem_img_path, workload_path, keyfile):
 
 class VM:
     """
-    Manage a qemu-systemt virtual machine.
+    Manage a qemu-system virtual machine.
 
     It will be started with `__init__` and the ssh connection will be
     established with `__enter__`, so any ssh operation should be done
@@ -104,16 +105,19 @@ class VM:
 
     def __enter__(self):
         """Initialize the ssh connection (blocks until success)"""
-        retries = 5
-        while self.ssh is None:
+        err = None
+        for _ in range(SSH_MAX_RETRY):
             time.sleep(1)
             try:
                 self.ssh = SshMachine(
                     '127.0.0.1', user='root', port=HOST_PORT, keyfile=self.key)
+                break
             except (EOFError, plumbum.machines.session.SSHCommsError) as e:
-                retries -= 1
-                if retries == 0:
-                    raise e
+                err = e
+                continue
+        else:  # Reached maximum retries
+            raise VM.VMException(
+                'SSH connection failed after too many retries', err)
         return self
 
     def __exit__(self, type, value, traceback):
@@ -132,8 +136,9 @@ class VM:
                             i.e. when not used inside a `with` block
         """
         if self.ssh is None:
-            raise ValueError('`VM.scp_to` must be used with an established '
-                             'SSH connection, i.e. inside a `with` block.')
+            raise VM.VMException(
+                '`VM.scp_to` must be used with an established SSH connection, '
+                'i.e. inside a `with` block.')
         src = local.path(src_local)
         dst = self.ssh.path(dst_remote)
         plumbum.path.utils.copy(src, dst)
@@ -161,6 +166,10 @@ class VM:
             '-name', 'lsm_perf_vm,debug-threads=on'
         ]
 
+    class VMException(Exception):
+        """Exceptions specific to the VM class"""
+        pass
+
 
 def print_eta(kernel_name, info=""):
     """Updates the status of the evaluation of a kernel"""
@@ -178,7 +187,7 @@ def init_output_file(file):
 def write_results_to_file(file, kernel_path, round, results):
     """Writes the results of the evaluation of a kernel to the file"""
     row = [kernel_path, round] + results
-    file.write(','.join([str(x) for x in row]) + '\n')
+    file.write(','.join(map(str, row)) + '\n')
     file.flush()
 
 
