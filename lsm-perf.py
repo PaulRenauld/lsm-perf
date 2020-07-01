@@ -209,7 +209,8 @@ def parse_args():
               'This should take no argument, and simply output an integer '
               'to stdout (the time measurement)'))
     parser.add_argument(
-        '-key', type=argparse.FileType('r'), default='~/.ssh/id_rsa',
+        '-key', type=argparse.FileType('r'),
+        default=os.path.expanduser('~/.ssh/id_rsa'),
         help=('Path of the RSA key to connect to the VM. '
               'It must be in the list of authorized keys in the image.'))
     parser.add_argument(
