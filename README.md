@@ -13,7 +13,7 @@ The `bzImage` of the kernels to be tested are required. You can build them from 
 
 You also need a filesystem image disk (`.img`) into which you can SSH as the root user without needing a password. You might need to create an rsa key and add it in the filesystem image disk as an authorized key. Instructions for this are [here](http://www.linuxproblem.org/art_9.html).
 
-Finally, you need a compiled workload. It should run many times a function with critical performances that you aim to improve, and output the running time in stdout. This should be the only thing printed to stdout. Workload samples are provided in `wokloads/`, you just need to compile them with `gcc <some workload>.c -o <some workload>`.
+Finally, you need a compiled workload. It should run many times a function with critical performances that you aim to improve, and output the running time in stdout. This should be the only thing printed to stdout. Workload samples are provided in `wokloads/`, you just need to compile them with `make <some workload>`.
 
 
 ## Run
