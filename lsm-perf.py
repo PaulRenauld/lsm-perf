@@ -116,7 +116,7 @@ class VM:
                 err = e
                 continue
         else:  # Reached maximum retries
-            raise VM.VMException(
+            raise VMException(
                 'SSH connection failed after too many retries', err)
         return self
 
@@ -136,7 +136,7 @@ class VM:
                             i.e. when not used inside a `with` block
         """
         if self.ssh is None:
-            raise VM.VMException(
+            raise VMException(
                 '`VM.scp_to` must be used with an established SSH connection, '
                 'i.e. inside a `with` block.')
         src = local.path(src_local)
@@ -166,9 +166,10 @@ class VM:
             '-name', 'lsm_perf_vm,debug-threads=on'
         ]
 
-    class VMException(Exception):
-        """Exceptions specific to the VM class"""
-        pass
+
+class VMException(Exception):
+    """Exceptions specific to the VM class"""
+    pass
 
 
 def print_eta(kernel_name, info=""):
