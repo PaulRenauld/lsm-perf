@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS  = -Wall
 
 # the build target executable:
-TARGETS = eventfd eventfd2
+TARGETS = eventfd
 
 all: $(TARGETS)
 
