@@ -6,7 +6,9 @@ import plumbum
 import sys
 import statistics
 import os
-from plumbum import local, SshMachine  # TODO: requirements
+import collections
+from plumbum import local, SshMachine
+
 
 
 ROUNDS = 1
@@ -19,6 +21,9 @@ SSH_MAX_RETRY = 5
 
 QEMU_AFFINITY_PATH = '../qemu-affinity/qemu_affinity.py'  # TODO: make generic
 
+CPU_Allocation = collections.namedtuple('CPU_Allocation',
+                                        ('qemu_sys', 'host_kvm0', 'host_kvm1'))
+
 
 def main(args):
     if args.cpu:
@@ -26,8 +31,12 @@ def main(args):
                'the workload. Make sure your kernel was started with '
                '`isolcpus=%(c0)d,%(c1)d`.')
               % {'c0': args.cpu[0], 'c1': args.cpu[1]})
+        alloc = CPU_Allocation(qemu_sys=args.cpu[0], host_kvm0=args.cpu[1],
+                               host_kvm1=args.cpu[2])
+        print(alloc)
     else:
         print('No dedicated CPUs provided.')
+        alloc = None
 
     try:
         init_output_file(args.out)
@@ -39,7 +48,7 @@ def main(args):
                     filesystem_img_path=args.image.name,
                     workload_path=args.workload.name,
                     keyfile=args.key.name,
-                    cpus=args.cpu,
+                    cpus=alloc,
                 )
                 write_results_to_file(args.out, kernel.name, round, results)
     except KeyboardInterrupt:
@@ -68,7 +77,7 @@ def evaluate_kernel(kernel_path, filesystem_img_path, workload_path, keyfile, cp
 
         work_cmd = vm.ssh[ON_VM_WORKLOAD_PATH]
         if cpus:
-            work_cmd = vm.ssh['taskset'][1, work_cmd]
+            work_cmd = vm.ssh['taskset'][1 << ON_VM_WORKLOAD_CPU, work_cmd]
 
         print_eta(name, info='Running warm up')
         for _ in range(WARMUP_RUNS):
@@ -106,7 +115,7 @@ class VM:
             vm.shh['ls']
     """
 
-    def __init__(self, kernel_path, filesystem_img_path, keyfile, cpus=[]):
+    def __init__(self, kernel_path, filesystem_img_path, keyfile, cpus=None):
         """Start the qemu VM (non blocking)
 
         :param kernel_path: Path of the kernel's bzImage
@@ -120,11 +129,7 @@ class VM:
         self.process = local['qemu-system-x86_64'].popen(qemu_args)
         self.ssh = None
         self.key = keyfile
-        print(VM.__qemu_affinity_setup(
-            qemu_pid=self.process.pid,
-            host_qemusys_cpu=cpus[0],
-            vm_kvm_cpu=ON_VM_WORKLOAD_CPU,
-            host_kvm_cpu=cpus[1]))
+        VM.__qemu_affinity_setup(self.process.pid, cpus)
 
     def __enter__(self):
         """Initialize the ssh connection (blocks until success)"""
@@ -184,7 +189,7 @@ class VM:
             '-netdev', 'user,id=net0,hostfwd=tcp::%d-:22' % HOST_PORT,
             '-append',
             'console=ttyS0,115200 root=/dev/sda rw nokaslr' + kernel_opt,
-            '-smp', '4',
+            '-smp', '2',
             '-m', '4G',
             '-drive', 'if=none,id=hd,file=%s,format=raw' % filesystem_img_path,
             '-device', 'virtio-scsi-pci,id=scsi',
@@ -197,10 +202,11 @@ class VM:
         ] + qemu_opt
 
     @staticmethod
-    def __qemu_affinity_setup(qemu_pid, host_qemusys_cpu, host_kvm_cpu, vm_kvm_cpu):
+    def __qemu_affinity_setup(qemu_pid, cpu_alloc):
         system_affinities = ('-p %(sys)d -i *:%(sys)d -q %(sys)d -w *:%(sys)d'
-                             % {'sys': host_qemusys_cpu}).split(' ')
-        kvm_affinities = ('-k %d:%d' % (vm_kvm_cpu, host_kvm_cpu)).split(' ')
+                             % {'sys': cpu_alloc.qemu_sys}).split(' ')
+        kvm_affinities = ['-k', str(cpu_alloc.host_kvm0), 
+                                str(cpu_alloc.host_kvm1)]
         args = system_affinities + kvm_affinities + ['--', str(qemu_pid)]
         cmd = plumbum.cmd.sudo[local['python3']][QEMU_AFFINITY_PATH][args]
         return cmd()
@@ -263,9 +269,9 @@ def parse_args():
               'isolated (i.e. start your machine with `isolcpus=x,y`)\n'
               'Keep this list empty to not assign CPUs'))
     args = parser.parse_args()
-    if len(args.cpu) not in [0, 2]:
+    if len(args.cpu) not in [0, 3]:
         parser.error(
-            'Incorrect number of CPUs provided: expects either 0 or 2')
+            'Incorrect number of CPUs provided: expects either 0 or 3')
     return args
 
 
