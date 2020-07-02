@@ -10,9 +10,8 @@ import collections
 from plumbum import local, SshMachine
 
 
-
 ROUNDS = 1
-REPETITIONS_PER_ROUND = 200
+REPETITIONS_PER_ROUND = 100
 WARMUP_RUNS = 5
 ON_VM_WORKLOAD_PATH = '~/lsm-perf-workload'
 ON_VM_WORKLOAD_CPU = 0
@@ -27,10 +26,8 @@ CPU_Allocation = collections.namedtuple('CPU_Allocation',
 
 def main(args):
     if args.cpu:
-        print(('CPU %(c0)d will run qemu system and CPU %(c1)d will run '
-               'the workload. Make sure your kernel was started with '
-               '`isolcpus=%(c0)d,%(c1)d`.')
-              % {'c0': args.cpu[0], 'c1': args.cpu[1]})
+        print(('Specific CPU allocation provided. Remember to start your '
+               'machine with `isolcpus=%s`.') % ','.join(map(str, args.cpu)))
         alloc = CPU_Allocation(qemu_sys=args.cpu[0], host_kvm0=args.cpu[1],
                                host_kvm1=args.cpu[2])
         print(alloc)
@@ -58,13 +55,16 @@ def main(args):
     return 0
 
 
-def evaluate_kernel(kernel_path, filesystem_img_path, workload_path, keyfile, cpus):
+def evaluate_kernel(kernel_path, filesystem_img_path, workload_path,
+                    keyfile, cpus):
     """Start a VM with the kernel and evaluates its performances
 
     :param kernel_path: Path of the kernel's bzImage
     :param filesystem_img_path: Path of the filesystem image (.img)
     :param workload_path: Path of the compiled workload program
     :param keyfile: Path of the rsa key that is authorized on the image
+    :param cpus: CPU_Allocation for qemu and the vm's cores,
+                 or None to not assign CPUs
     :return: time measurements printed by each run of the workload
     :rtype: list[int]
     """
@@ -105,6 +105,9 @@ class VM:
     established with `__enter__`, so any ssh operation should be done
     inside a `with` block.
 
+    A CPU allocation can also be provided, to bind the cores of the
+    virtual machine to physical cores.
+
     :ivar ssh: plumbum.SshMachine object, useful to run commands on
                the VM. It should only be used inside a `with` block.
     :ivar process: popen process of qemu, useful to send signals
@@ -121,6 +124,8 @@ class VM:
         :param kernel_path: Path of the kernel's bzImage
         :param filesystem_img_path: Path of the filesystem image (.img)
         :param keyfile: Path of rsa key that is authorized on the image
+        :param cpus: CPU_Allocation for qemu and the vm's cores,
+                     or None to not assign CPUs
         """
         qemu_args = VM.__construct_qemu_args(
             kernel_path=kernel_path,
@@ -129,7 +134,8 @@ class VM:
         self.process = local['qemu-system-x86_64'].popen(qemu_args)
         self.ssh = None
         self.key = keyfile
-        VM.__qemu_affinity_setup(self.process.pid, cpus)
+        if cpus:
+            VM.__qemu_affinity_setup(self.process.pid, cpus)
 
     def __enter__(self):
         """Initialize the ssh connection (blocks until success)"""
@@ -188,7 +194,7 @@ class VM:
             '-device', 'e1000,netdev=net0',
             '-netdev', 'user,id=net0,hostfwd=tcp::%d-:22' % HOST_PORT,
             '-append',
-            'console=ttyS0,115200 root=/dev/sda rw nokaslr' + kernel_opt,
+                'console=ttyS0,115200 root=/dev/sda rw nokaslr' + kernel_opt,
             '-smp', '2',
             '-m', '4G',
             '-drive', 'if=none,id=hd,file=%s,format=raw' % filesystem_img_path,
@@ -203,12 +209,13 @@ class VM:
 
     @staticmethod
     def __qemu_affinity_setup(qemu_pid, cpu_alloc):
+        """Run qemu_affinity.py to allocate CPUs based on the CPU_Allocation"""
         system_affinities = ('-p %(sys)d -i *:%(sys)d -q %(sys)d -w *:%(sys)d'
                              % {'sys': cpu_alloc.qemu_sys}).split(' ')
         kvm_affinities = ['-k', str(cpu_alloc.host_kvm0), 
                                 str(cpu_alloc.host_kvm1)]
         args = system_affinities + kvm_affinities + ['--', str(qemu_pid)]
-        cmd = plumbum.cmd.sudo[local['python3']][QEMU_AFFINITY_PATH][args]
+        cmd = plumbum.cmd.sudo['python3'][QEMU_AFFINITY_PATH][args]
         return cmd()
 
 
@@ -264,9 +271,11 @@ def parse_args():
     parser.add_argument(
         '-c', '--cpu', type=int, default=[], nargs='*',
         help=('CPUs that should be used to run the VM. \n'
-              'Provide two CPUs [x,y], qemus-system will be assigned to x, '
-              'and the workload will be run on y. These CPUs should be '
-              'isolated (i.e. start your machine with `isolcpus=x,y`)\n'
+              'Provide three CPUs [x,y,z], qemus-system will be assigned '
+              'to x, the two CPUs of the VM will be assigned to y and z '
+              'respectively, and the workload will be run on y. '
+              'These CPUs should be isolated '
+              '(i.e. start your machine with `isolcpus=x,y`)\n'
               'Keep this list empty to not assign CPUs'))
     args = parser.parse_args()
     if len(args.cpu) not in [0, 3]:

@@ -7,6 +7,7 @@ You need the following installed on your system:
 - [Python 3](https://www.python.org/downloads/) 
 - The [plumbum library](https://pypi.org/project/plumbum/) (`pip install plumbum`)
 - [Qemu](https://www.qemu.org/download/) (`apt-get install qemu`)
+- [qemu-affinity](https://github.com/zegelin/qemu-affinity) if you want to use the CPU management.
 
 ### Files
 The `bzImage` of the kernels to be tested are required. You can build them from the [Linux](https://github.com/torvalds/linux) codebase. 
@@ -21,8 +22,8 @@ Finally, you need a compiled workload. It should run many times a function with 
 
 Usage:
 ``` 
-lsm-perf.py [-h] -i IMAGE -k KERNELS [KERNELS ...] -w WORKLOAD
-                   [-key KEY] [-o OUT]
+usage: lsm-perf.py [-h] -i IMAGE -k KERNELS [KERNELS ...] -w WORKLOAD
+                   [-key KEY] [-o OUT] [-c [CPU [CPU ...]]]
 
 Compares the performances of several kernels on the same workload.
 
@@ -39,9 +40,19 @@ optional arguments:
   -key KEY              Path of the RSA key to connect to the VM. It must be
                         in the list of authorized keys in the image.
   -o OUT, --out OUT     Path of the output file.
+  -c [CPU [CPU ...]], --cpu [CPU [CPU ...]]
+                        CPUs that should be used to run the VM. Provide three
+                        CPUs [x,y,z], qemus-system will be assigned to x, the
+                        two CPUs of the VM will be assigned to y and z
+                        respectively, and the workload will be run on y. These
+                        CPUs should be isolated (i.e. start your machine with
+                        `isolcpus=x,y`) Keep this list empty to not assign
+                        CPUs
 ```
 
 You can give as many kernels as you want (`-k`). They will all be evaluated several times and the results will be written in the output file (`-o`). You also need to provide the image (`-i`) with the authorized ssh key (-`key`). The progress will be displayed in stdout.
+
+You can use the CPU management with `-c`. This will assign the virtual machine's CPUs to the physical host's CPUs. You should also start the host with the kernel parameter `isolcpus=...`, so that the virtual machine will have dedicated CPUs. This ensures the most reliable benchmark measurements.
 
 ## Example 
 
@@ -49,6 +60,7 @@ Run (in progress) example:
 
 ```
 $ python3 lsm-perf.py -i ../../images/debian.img -k ../../images/alllsm ../../images/bpflsm ../../images/paulsm ../../images/nolsm -w workloads/eventfd -key ****
+No dedicated CPUs provided.
 Starting round 0
         Evaluating alllsm: 100% average=634125, stdev=6516                    
         Evaluating bpflsm: 100% average=591334, stdev=5978                    
