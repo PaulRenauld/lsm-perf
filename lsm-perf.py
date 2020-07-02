@@ -17,13 +17,15 @@ ON_VM_WORKLOAD_CPU = 0
 HOST_PORT = 5555
 SSH_MAX_RETRY = 5
 
+QEMU_AFFINITY_PATH = '../qemu-affinity/qemu_affinity.py'  # TODO: make generic
+
 
 def main(args):
     if args.cpu:
         print(('CPU %(c0)d will run qemu system and CPU %(c1)d will run '
                'the workload. Make sure your kernel was started with '
                '`isolcpus=%(c0)d,%(c1)d`.')
-               % {'c0': args.cpu[0], 'c1': args.cpu[1]})
+              % {'c0': args.cpu[0], 'c1': args.cpu[1]})
     else:
         print('No dedicated CPUs provided.')
 
@@ -61,7 +63,7 @@ def evaluate_kernel(kernel_path, filesystem_img_path, workload_path, keyfile, cp
     name = os.path.basename(kernel_path)
     print_eta(name, info='connecting')
 
-    with VM(kernel_path, filesystem_img_path, keyfile) as vm:
+    with VM(kernel_path, filesystem_img_path, keyfile, cpus) as vm:
         vm.scp_to(workload_path, ON_VM_WORKLOAD_PATH)
 
         work_cmd = vm.ssh[ON_VM_WORKLOAD_PATH]
@@ -118,6 +120,11 @@ class VM:
         self.process = local['qemu-system-x86_64'].popen(qemu_args)
         self.ssh = None
         self.key = keyfile
+        print(VM.__qemu_affinity_setup(
+            qemu_pid=self.process.pid,
+            host_qemusys_cpu=cpus[0],
+            vm_kvm_cpu=ON_VM_WORKLOAD_CPU,
+            host_kvm_cpu=cpus[1]))
 
     def __enter__(self):
         """Initialize the ssh connection (blocks until success)"""
@@ -162,9 +169,12 @@ class VM:
     @staticmethod
     def __construct_qemu_args(kernel_path, filesystem_img_path, isolcpus=[]):
         """Qemu arguments similar to what `vm start` produces"""
-        isolcpus_opt = ''
+        kernel_opt = ''
+        qemu_opt = []
         if isolcpus:
-            isolcpus_opt = ' isolcpus=' + ','.join(map(str, isolcpus))
+            kernel_opt = ' isolcpus=' + ','.join(map(str, isolcpus))
+            qemu_opt = ['-name', 'lsm-perf-vm,debug-threads=on']
+
         return [
             '-nographic',
             '-s',
@@ -173,7 +183,7 @@ class VM:
             '-device', 'e1000,netdev=net0',
             '-netdev', 'user,id=net0,hostfwd=tcp::%d-:22' % HOST_PORT,
             '-append',
-                'console=ttyS0,115200 root=/dev/sda rw nokaslr' + isolcpus_opt,
+            'console=ttyS0,115200 root=/dev/sda rw nokaslr' + kernel_opt,
             '-smp', '4',
             '-m', '4G',
             '-drive', 'if=none,id=hd,file=%s,format=raw' % filesystem_img_path,
@@ -184,7 +194,16 @@ class VM:
             '-serial', 'mon:stdio',
             '-kernel', '%s' % kernel_path,
             '-name', 'lsm_perf_vm,debug-threads=on'
-        ]
+        ] + qemu_opt
+
+    @staticmethod
+    def __qemu_affinity_setup(qemu_pid, host_qemusys_cpu, host_kvm_cpu, vm_kvm_cpu):
+        system_affinities = ('-p %(sys)d -i *:%(sys)d -q %(sys)d -w *:%(sys)d'
+                             % {'sys': host_qemusys_cpu}).split(' ')
+        kvm_affinities = ('-k %d:%d' % (vm_kvm_cpu, host_kvm_cpu)).split(' ')
+        args = system_affinities + kvm_affinities + ['--', str(qemu_pid)]
+        cmd = plumbum.cmd.sudo[local['python3']][QEMU_AFFINITY_PATH][args]
+        return cmd()
 
 
 class VMException(Exception):
