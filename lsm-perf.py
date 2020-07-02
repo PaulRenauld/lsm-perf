@@ -10,9 +10,10 @@ from plumbum import local, SshMachine  # TODO: requirements
 
 
 ROUNDS = 1
-REPETITIONS_PER_ROUND = 2
+REPETITIONS_PER_ROUND = 200
 WARMUP_RUNS = 5
 ON_VM_WORKLOAD_PATH = '~/lsm-perf-workload'
+ON_VM_WORKLOAD_CPU = 0
 HOST_PORT = 5555
 SSH_MAX_RETRY = 5
 
@@ -46,7 +47,7 @@ def main(args):
     return 0
 
 
-def evaluate_kernel(kernel_path, filesystem_img_path, workload_path, keyfile):
+def evaluate_kernel(kernel_path, filesystem_img_path, workload_path, keyfile, cpus):
     """Start a VM with the kernel and evaluates its performances
 
     :param kernel_path: Path of the kernel's bzImage
@@ -62,7 +63,10 @@ def evaluate_kernel(kernel_path, filesystem_img_path, workload_path, keyfile):
 
     with VM(kernel_path, filesystem_img_path, keyfile) as vm:
         vm.scp_to(workload_path, ON_VM_WORKLOAD_PATH)
+
         work_cmd = vm.ssh[ON_VM_WORKLOAD_PATH]
+        if cpus:
+            work_cmd = vm.ssh['taskset'][1, work_cmd]
 
         print_eta(name, info='Running warm up')
         for _ in range(WARMUP_RUNS):
@@ -100,14 +104,17 @@ class VM:
             vm.shh['ls']
     """
 
-    def __init__(self, kernel_path, filesystem_img_path, keyfile):
+    def __init__(self, kernel_path, filesystem_img_path, keyfile, cpus=[]):
         """Start the qemu VM (non blocking)
 
         :param kernel_path: Path of the kernel's bzImage
         :param filesystem_img_path: Path of the filesystem image (.img)
         :param keyfile: Path of rsa key that is authorized on the image
         """
-        qemu_args = VM.__construct_qemu_args(kernel_path, filesystem_img_path)
+        qemu_args = VM.__construct_qemu_args(
+            kernel_path=kernel_path,
+            filesystem_img_path=filesystem_img_path,
+            isolcpus=[ON_VM_WORKLOAD_CPU] if cpus else [])
         self.process = local['qemu-system-x86_64'].popen(qemu_args)
         self.ssh = None
         self.key = keyfile
@@ -153,8 +160,11 @@ class VM:
         plumbum.path.utils.copy(src, dst)
 
     @staticmethod
-    def __construct_qemu_args(kernel_path, filesystem_img_path):
+    def __construct_qemu_args(kernel_path, filesystem_img_path, isolcpus=[]):
         """Qemu arguments similar to what `vm start` produces"""
+        isolcpus_opt = ''
+        if isolcpus:
+            isolcpus_opt = ' isolcpus=' + ','.join(map(str, isolcpus))
         return [
             '-nographic',
             '-s',
@@ -162,7 +172,8 @@ class VM:
             '-cpu', 'host',
             '-device', 'e1000,netdev=net0',
             '-netdev', 'user,id=net0,hostfwd=tcp::%d-:22' % HOST_PORT,
-            '-append', 'console=ttyS0,115200 root=/dev/sda rw nokaslr',
+            '-append',
+                'console=ttyS0,115200 root=/dev/sda rw nokaslr' + isolcpus_opt,
             '-smp', '4',
             '-m', '4G',
             '-drive', 'if=none,id=hd,file=%s,format=raw' % filesystem_img_path,
