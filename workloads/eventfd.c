@@ -16,7 +16,7 @@ int main(void) {
         start = clock();
         while (c--) eventfd_write(fd, 1);
         end = clock();
-        printf("%d\n", end - start);
+        printf("%ld\n", end - start);
 
         nanosleep(&tim, NULL);
         return 0;
