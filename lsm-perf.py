@@ -10,7 +10,7 @@ import collections
 from plumbum import local, SshMachine
 
 
-ROUNDS = 1
+ROUNDS = 5
 REPETITIONS_PER_ROUND = 100
 WARMUP_RUNS = 5
 ON_VM_WORKLOAD_PATH = '~/lsm-perf-workload'
@@ -23,16 +23,16 @@ QEMU_AFFINITY_PATH = '../qemu-affinity/qemu_affinity.py'
 
 
 """Holds the assignment of physical CPUs"""
-CPU_Allocation = collections.namedtuple('CPU_Allocation',
-                                        ('qemu_sys', 'host_kvm0', 'host_kvm1'))
+CpuAllocation = collections.namedtuple('CpuAllocation',
+                                       ('qemu_sys', 'host_kvm0', 'host_kvm1'))
 
 
 def main(args):
     if args.cpu:
         print(('Specific CPU allocation provided. Remember to start your '
                'machine with `isolcpus=%s`.') % ','.join(map(str, args.cpu)))
-        alloc = CPU_Allocation(qemu_sys=args.cpu[0], host_kvm0=args.cpu[1],
-                               host_kvm1=args.cpu[2])
+        alloc = CpuAllocation(qemu_sys=args.cpu[0], host_kvm0=args.cpu[1],
+                              host_kvm1=args.cpu[2])
     else:
         print('No dedicated CPUs provided.')
         alloc = None
@@ -65,7 +65,7 @@ def evaluate_kernel(kernel_path, filesystem_img_path, workload_path,
     :param filesystem_img_path: Path of the filesystem image (.img)
     :param workload_path: Path of the compiled workload program
     :param keyfile: Path of the rsa key that is authorized on the image
-    :param cpus: CPU_Allocation for qemu and the vm's cores,
+    :param cpus: CpuAllocation for qemu and the vm's cores,
                  or None to not assign CPUs
     :return: time measurements printed by each run of the workload
     :rtype: list[int]
@@ -128,7 +128,7 @@ class VM:
         :param kernel_path: Path of the kernel's bzImage
         :param filesystem_img_path: Path of the filesystem image (.img)
         :param keyfile: Path of rsa key that is authorized on the image
-        :param cpu_allocation: CPU_Allocation for qemu and the vm's cores,
+        :param cpu_allocation: CpuAllocation for qemu and the vm's cores,
                                or None to not assign CPUs
         :param isolcpus: list of CPU ID that should be isolated at boot time
         """
@@ -186,10 +186,8 @@ class VM:
     def __construct_qemu_args(kernel_path, filesystem_img_path, isolcpus=[]):
         """Qemu arguments similar to what `vm start` produces"""
         kernel_opt = ''
-        qemu_opt = []
         if isolcpus:
             kernel_opt = ' isolcpus=' + ','.join(map(str, isolcpus))
-            qemu_opt = ['-name', 'lsm-perf-vm,debug-threads=on']
 
         return [
             '-nographic',
@@ -210,11 +208,11 @@ class VM:
             '-serial', 'mon:stdio',
             '-kernel', '%s' % kernel_path,
             '-name', 'lsm_perf_vm,debug-threads=on'
-        ] + qemu_opt
+        ]
 
     @staticmethod
     def __qemu_affinity_setup(qemu_pid, cpu_alloc):
-        """Run qemu_affinity.py to allocate CPUs based on the CPU_Allocation"""
+        """Run qemu_affinity.py to allocate CPUs based on the CpuAllocation"""
         system_affinities = ('-p %(sys)d -i *:%(sys)d -q %(sys)d -w *:%(sys)d'
                              % {'sys': cpu_alloc.qemu_sys}).split(' ')
         kvm_affinities = ['-k', str(cpu_alloc.host_kvm0),
