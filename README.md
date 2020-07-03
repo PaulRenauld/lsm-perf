@@ -42,17 +42,17 @@ optional arguments:
   -o OUT, --out OUT     Path of the output file.
   -c [CPU [CPU ...]], --cpu [CPU [CPU ...]]
                         CPUs that should be used to run the VM. Provide three
-                        CPUs [x,y,z], qemus-system will be assigned to x, the
+                        CPUs [x,y,z], qemu-system will be assigned to x, the
                         two CPUs of the VM will be assigned to y and z
                         respectively, and the workload will be run on y. These
                         CPUs should be isolated (i.e. start your machine with
-                        `isolcpus=x,y`) Keep this list empty to not assign
+                        `isolcpus=x,y,z`). Keep this list empty to not assign
                         CPUs
 ```
 
 You can give as many kernels as you want (`-k`). They will all be evaluated several times and the results will be written in the output file (`-o`). You also need to provide the image (`-i`) with the authorized ssh key (-`key`). The progress will be displayed in stdout.
 
-You can use the CPU management with `-c`. This will assign the virtual machine's CPUs to the physical host's CPUs. You should also start the host with the kernel parameter `isolcpus=...`, so that the virtual machine will have dedicated CPUs. This ensures the most reliable benchmark measurements.
+You can use the CPU management with `-c`. This will assign the virtual machine's CPUs to the physical host's CPUs. You should also start the host with the kernel parameter `isolcpus=...`, so that the virtual machine will have dedicated CPUs. This ensures the most reliable benchmark measurements. It is also recommended to start your machine in non-graphical mode.
 
 ## Example 
 

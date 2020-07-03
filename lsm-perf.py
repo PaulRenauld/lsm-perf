@@ -18,8 +18,11 @@ ON_VM_WORKLOAD_CPU = 0
 HOST_PORT = 5555
 SSH_MAX_RETRY = 5
 
-QEMU_AFFINITY_PATH = '../qemu-affinity/qemu_affinity.py'  # TODO: make generic
+# TODO(renauld): make generic
+QEMU_AFFINITY_PATH = '../qemu-affinity/qemu_affinity.py'
 
+
+"""Holds the assignment of physical CPUs"""
 CPU_Allocation = collections.namedtuple('CPU_Allocation',
                                         ('qemu_sys', 'host_kvm0', 'host_kvm1'))
 
@@ -30,7 +33,6 @@ def main(args):
                'machine with `isolcpus=%s`.') % ','.join(map(str, args.cpu)))
         alloc = CPU_Allocation(qemu_sys=args.cpu[0], host_kvm0=args.cpu[1],
                                host_kvm1=args.cpu[2])
-        print(alloc)
     else:
         print('No dedicated CPUs provided.')
         alloc = None
@@ -70,9 +72,11 @@ def evaluate_kernel(kernel_path, filesystem_img_path, workload_path,
     """
     results = []
     name = os.path.basename(kernel_path)
+    isolcpus = [ON_VM_WORKLOAD_CPU] if cpus else []
     print_eta(name, info='connecting')
 
-    with VM(kernel_path, filesystem_img_path, keyfile, cpus) as vm:
+    with VM(kernel_path, filesystem_img_path, keyfile,
+            cpus, isolcpus) as vm:
         vm.scp_to(workload_path, ON_VM_WORKLOAD_PATH)
 
         work_cmd = vm.ssh[ON_VM_WORKLOAD_PATH]
@@ -118,24 +122,26 @@ class VM:
             vm.shh['ls']
     """
 
-    def __init__(self, kernel_path, filesystem_img_path, keyfile, cpus=None):
+    def __init__(self, kernel_path, filesystem_img_path, keyfile,
+                 cpu_allocation=None, isolcpus=[]):
         """Start the qemu VM (non blocking)
 
         :param kernel_path: Path of the kernel's bzImage
         :param filesystem_img_path: Path of the filesystem image (.img)
         :param keyfile: Path of rsa key that is authorized on the image
-        :param cpus: CPU_Allocation for qemu and the vm's cores,
-                     or None to not assign CPUs
+        :param cpu_allocation: CPU_Allocation for qemu and the vm's cores,
+                               or None to not assign CPUs
+        :param isolcpus: list of CPU ID that should be isolated at boot time
         """
         qemu_args = VM.__construct_qemu_args(
             kernel_path=kernel_path,
             filesystem_img_path=filesystem_img_path,
-            isolcpus=[ON_VM_WORKLOAD_CPU] if cpus else [])
+            isolcpus=isolcpus)
         self.process = local['qemu-system-x86_64'].popen(qemu_args)
         self.ssh = None
         self.key = keyfile
-        if cpus:
-            VM.__qemu_affinity_setup(self.process.pid, cpus)
+        if cpu_allocation:
+            VM.__qemu_affinity_setup(self.process.pid, cpu_allocation)
 
     def __enter__(self):
         """Initialize the ssh connection (blocks until success)"""
@@ -212,7 +218,7 @@ class VM:
         """Run qemu_affinity.py to allocate CPUs based on the CPU_Allocation"""
         system_affinities = ('-p %(sys)d -i *:%(sys)d -q %(sys)d -w *:%(sys)d'
                              % {'sys': cpu_alloc.qemu_sys}).split(' ')
-        kvm_affinities = ['-k', str(cpu_alloc.host_kvm0), 
+        kvm_affinities = ['-k', str(cpu_alloc.host_kvm0),
                                 str(cpu_alloc.host_kvm1)]
         args = system_affinities + kvm_affinities + ['--', str(qemu_pid)]
         cmd = plumbum.cmd.sudo['python3'][QEMU_AFFINITY_PATH][args]
@@ -270,12 +276,12 @@ def parse_args():
         help='Path of the output file.')
     parser.add_argument(
         '-c', '--cpu', type=int, default=[], nargs='*',
-        help=('CPUs that should be used to run the VM. \n'
-              'Provide three CPUs [x,y,z], qemus-system will be assigned '
+        help=('CPUs that should be used to run the VM. '
+              'Provide three CPUs [x,y,z], qemu-system will be assigned '
               'to x, the two CPUs of the VM will be assigned to y and z '
               'respectively, and the workload will be run on y. '
               'These CPUs should be isolated '
-              '(i.e. start your machine with `isolcpus=x,y`)\n'
+              '(i.e. start your machine with `isolcpus=x,y,z`). '
               'Keep this list empty to not assign CPUs'))
     args = parser.parse_args()
     if len(args.cpu) not in [0, 3]:
