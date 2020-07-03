@@ -75,8 +75,7 @@ def evaluate_kernel(kernel_path, filesystem_img_path, workload_path,
     isolcpus = [ON_VM_WORKLOAD_CPU] if cpus else []
     print_eta(name, info='connecting')
 
-    with VM(kernel_path, filesystem_img_path, keyfile,
-            cpus, isolcpus) as vm:
+    with VM(kernel_path, filesystem_img_path, keyfile, cpus, isolcpus) as vm:
         vm.scp_to(workload_path, ON_VM_WORKLOAD_PATH)
 
         work_cmd = vm.ssh[ON_VM_WORKLOAD_PATH]
