@@ -1,2 +1,2 @@
-lsm-perf.csv
+*.csv
 workloads/eventfd

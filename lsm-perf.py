@@ -272,19 +272,16 @@ def parse_args():
         '-o', '--out', type=argparse.FileType('w'), default='lsm-perf.csv',
         help='Path of the output file.')
     parser.add_argument(
-        '-c', '--cpu', type=int, default=[], nargs='*',
-        help=('CPUs that should be used to run the VM. '
-              'Provide three CPUs [x,y,z], qemu-system will be assigned '
-              'to x, the two CPUs of the VM will be assigned to y and z '
-              'respectively, and the workload will be run on y. '
-              'These CPUs should be isolated '
-              '(i.e. start your machine with `isolcpus=x,y,z`). '
-              'Keep this list empty to not assign CPUs'))
-    args = parser.parse_args()
-    if len(args.cpu) not in [0, 3]:
-        parser.error(
-            'Incorrect number of CPUs provided: expects either 0 or 3')
-    return args
+        '-c', '--cpu', type=int, nargs=3,
+        metavar=('CPU-QEMU', 'CPU-KVM1', 'CPU-KVM2'),
+        help=('CPUs that should be used to run the VM. Qemu-system will '
+              'be assigned to `CPU-QEMU`, the two CPUs of the VM will be '
+              'assigned to `CPU-KVM1` and `CPU-KVM2` respectively, and '
+              'the workload will be run on `CPU-KVM1`. These CPUs should '
+              'be isolated (i.e. start your machine with '
+              '`isolcpus=CPU-QEMU,CPU-KVM1,CPU-KVM2`. '
+              'Omit this parameter to not assign CPUs'))
+    return parser.parse_args()
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ Finally, you need a compiled workload. It should run many times a function with 
 Usage:
 ``` 
 usage: lsm-perf.py [-h] -i IMAGE -k KERNELS [KERNELS ...] -w WORKLOAD
-                   [-key KEY] [-o OUT] [-c [CPU [CPU ...]]]
+                   [-key KEY] [-o OUT] [-c CPU-QEMU CPU-KVM1 CPU-KVM2]
 
 Compares the performances of several kernels on the same workload.
 
@@ -40,14 +40,14 @@ optional arguments:
   -key KEY              Path of the RSA key to connect to the VM. It must be
                         in the list of authorized keys in the image.
   -o OUT, --out OUT     Path of the output file.
-  -c [CPU [CPU ...]], --cpu [CPU [CPU ...]]
-                        CPUs that should be used to run the VM. Provide three
-                        CPUs [x,y,z], qemu-system will be assigned to x, the
-                        two CPUs of the VM will be assigned to y and z
-                        respectively, and the workload will be run on y. These
-                        CPUs should be isolated (i.e. start your machine with
-                        `isolcpus=x,y,z`). Keep this list empty to not assign
-                        CPUs
+  -c CPU-QEMU CPU-KVM1 CPU-KVM2, --cpu CPU-QEMU CPU-KVM1 CPU-KVM2
+                        CPUs that should be used to run the VM. Qemu-system
+                        will be assigned to `CPU-QEMU`, the two CPUs of the VM
+                        will be assigned to `CPU-KVM1` and `CPU-KVM2`
+                        respectively, and the workload will be run on `CPU-
+                        KVM1`. These CPUs should be isolated (i.e. start your
+                        machine with `isolcpus=CPU-QEMU,CPU-KVM1,CPU-KVM2`.
+                        Omit this parameter to not assign CPUs
 ```
 
 You can give as many kernels as you want (`-k`). They will all be evaluated several times and the results will be written in the output file (`-o`). You also need to provide the image (`-i`) with the authorized ssh key (-`key`). The progress will be displayed in stdout.
