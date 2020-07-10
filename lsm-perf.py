@@ -14,9 +14,7 @@ ON_VM_WORKLOAD_PATH = '~/lsm-perf-workload'
 ON_VM_WORKLOAD_CPU = 0
 HOST_PORT = 5555
 SSH_MAX_RETRY = 5
-
-# TODO(renauld): make generic
-QEMU_AFFINITY_PATH = '../qemu-affinity/qemu_affinity.py'
+QEMU_AFFINITY_PATH = './qemu-affinity/qemu_affinity.py'
 
 
 """Holds the assignment of physical CPUs"""
@@ -217,7 +215,7 @@ class VM:
         kvm_affinities = ['-k', str(cpu_alloc.host_kvm0),
                                 str(cpu_alloc.host_kvm1)]
         args = system_affinities + kvm_affinities + ['--', str(qemu_pid)]
-        cmd = plumbum.cmd.sudo['python3'][QEMU_AFFINITY_PATH][args]
+        cmd = plumbum.cmd.sudo[sys.executable][QEMU_AFFINITY_PATH][args]
         return cmd()
 
 

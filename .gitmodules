@@ -1,0 +1,3 @@
+[submodule "qemu-affinity"]
+	path = qemu-affinity
+	url = https://github.com/zegelin/qemu-affinity
