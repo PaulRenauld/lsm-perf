@@ -10,9 +10,6 @@ import collections
 from plumbum import local, SshMachine
 
 
-ROUNDS = 5
-REPETITIONS_PER_ROUND = 100
-WARMUP_RUNS = 5
 ON_VM_WORKLOAD_PATH = '~/lsm-perf-workload'
 ON_VM_WORKLOAD_CPU = 0
 HOST_PORT = 5555
@@ -38,8 +35,8 @@ def main(args):
         alloc = None
 
     try:
-        init_output_file(args.out)
-        for round in range(ROUNDS):
+        init_output_file(args.out, args.runs)
+        for round in range(args.rounds):
             print('Starting round %d' % round)
             for kernel in args.kernels:
                 results = evaluate_kernel(
@@ -48,6 +45,8 @@ def main(args):
                     workload_path=args.workload.name,
                     keyfile=args.key.name,
                     cpus=alloc,
+                    runs=args.runs,
+                    warmups=args.warmups
                 )
                 write_results_to_file(args.out, kernel.name, round, results)
     except KeyboardInterrupt:
@@ -58,7 +57,7 @@ def main(args):
 
 
 def evaluate_kernel(kernel_path, filesystem_img_path, workload_path,
-                    keyfile, cpus):
+                    keyfile, cpus, runs, warmups):
     """Start a VM with the kernel and evaluates its performances
 
     :param kernel_path: Path of the kernel's bzImage
@@ -83,12 +82,12 @@ def evaluate_kernel(kernel_path, filesystem_img_path, workload_path,
             work_cmd = vm.ssh['taskset'][1 << ON_VM_WORKLOAD_CPU, work_cmd]
 
         print_eta(name, info='Running warm up')
-        for _ in range(WARMUP_RUNS):
+        for _ in range(warmups):
             work_cmd()
 
-        for i in range(REPETITIONS_PER_ROUND):
+        for i in range(runs):
             results.append(int(work_cmd().strip()))
-            percentage = (i + 1) * 100 / REPETITIONS_PER_ROUND
+            percentage = (i + 1) * 100 / runs
             print_eta(name, info='%d%%' % percentage)
 
         vm.ssh.path(ON_VM_WORKLOAD_PATH).delete()
@@ -229,14 +228,16 @@ class VMException(Exception):
 
 def print_eta(kernel_name, info=""):
     """Updates the status of the evaluation of a kernel"""
-    sys.stdout.write('\r\tEvaluating %s: %s' % (kernel_name, info) + ' ' * 20)
+    # Erase previous ETA first
+    sys.stdout.write('\r\tEvaluating %s:' % kernel_name + ' ' * 30)
+    sys.stdout.write('\r\tEvaluating %s: %s' % (kernel_name, info))
     sys.stdout.flush()
 
 
-def init_output_file(file):
+def init_output_file(file, runs):
     """Writes the header in the result file"""
     columns = (['kernel path', 'round'] +
-               ['run %d' % i for i in range(REPETITIONS_PER_ROUND)])
+               ['run %d' % i for i in range(runs)])
     file.write(','.join(columns) + '\n')
 
 
@@ -264,7 +265,7 @@ def parse_args():
               'This should take no argument, and simply output an integer '
               'to stdout (the time measurement)'))
     parser.add_argument(
-        '-key', type=argparse.FileType('r'),
+        '--key', type=argparse.FileType('r'),
         default=os.path.expanduser('~/.ssh/id_rsa'),
         help=('Path of the RSA key to connect to the VM. '
               'It must be in the list of authorized keys in the image.'))
@@ -281,6 +282,17 @@ def parse_args():
               'be isolated (i.e. start your machine with '
               '`isolcpus=CPU-QEMU,CPU-KVM1,CPU-KVM2`. '
               'Omit this parameter to not assign CPUs'))
+    parser.add_argument(
+        '--runs', type=int, default=100,
+        help=('Number of times the workload should be evaluated for each '
+              'kernel in each round.'))
+    parser.add_argument(
+        '--rounds', type=int, default=5,
+        help='Number of times the tested are repeated and the VMs restarted.')
+    parser.add_argument(
+        '--warmups', type=int, default=5,
+        help=('Number of times the workload will be run but not measured '
+              'after starting the VM.'))
     return parser.parse_args()
 
 
