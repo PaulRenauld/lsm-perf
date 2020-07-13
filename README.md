@@ -7,7 +7,7 @@ You need the following installed on your system:
 - [Python 3](https://www.python.org/downloads/) 
 - The [plumbum library](https://pypi.org/project/plumbum/) (`pip install plumbum`)
 - [Qemu](https://www.qemu.org/download/) (`apt-get install qemu`)
-- [qemu-affinity](https://github.com/zegelin/qemu-affinity) if you want to use the CPU management.
+- [qemu-affinity](https://github.com/zegelin/qemu-affinity) if you want to use the CPU management. This is provided as a git submodule, so clone this repository with `git clone --recursive https://github.com/PaulRenauld/lsm-perf.git`. If you already cloned the repository without the recursive option, just run `git submodule update --init --recursive`
 
 ### Files
 The `bzImage` of the kernels to be tested are required. You can build them from the [Linux](https://github.com/torvalds/linux) codebase. 
@@ -23,7 +23,8 @@ Finally, you need a compiled workload. It should run many times a function with 
 Usage:
 ``` 
 usage: lsm-perf.py [-h] -i IMAGE -k KERNELS [KERNELS ...] -w WORKLOAD
-                   [-key KEY] [-o OUT] [-c CPU-QEMU CPU-KVM1 CPU-KVM2]
+                   [--key KEY] [-o OUT] [-c CPU-QEMU CPU-KVM1 CPU-KVM2]
+                   [--runs RUNS] [--rounds ROUNDS] [--warmups WARMUPS]
 
 Compares the performances of several kernels on the same workload.
 
@@ -37,7 +38,7 @@ optional arguments:
                         Path of the workload program to run to evaluate the
                         kernels. This should take no argument, and simply
                         output an integer to stdout (the time measurement)
-  -key KEY              Path of the RSA key to connect to the VM. It must be
+  --key KEY             Path of the RSA key to connect to the VM. It must be
                         in the list of authorized keys in the image.
   -o OUT, --out OUT     Path of the output file.
   -c CPU-QEMU CPU-KVM1 CPU-KVM2, --cpu CPU-QEMU CPU-KVM1 CPU-KVM2
@@ -48,9 +49,16 @@ optional arguments:
                         KVM1`. These CPUs should be isolated (i.e. start your
                         machine with `isolcpus=CPU-QEMU,CPU-KVM1,CPU-KVM2`.
                         Omit this parameter to not assign CPUs
+  --runs RUNS           Number of times the workload should be evaluated for
+                        each kernel in each round.
+  --rounds ROUNDS       Number of times the tested are repeated and the VMs
+                        restarted.
+  --warmups WARMUPS     Number of times the workload will be run but not
+                        measured after starting the VM.
+
 ```
 
-You can give as many kernels as you want (`-k`). They will all be evaluated several times and the results will be written in the output file (`-o`). You also need to provide the image (`-i`) with the authorized ssh key (-`key`). The progress will be displayed in stdout.
+You can give as many kernels as you want (`-k`). They will all be evaluated several times and the results will be written in the output file (`-o`). You also need to provide the image (`-i`) with the authorized ssh key (`--key`). The progress will be displayed in stdout.
 
 You can use the CPU management with `-c`. This will assign the virtual machine's CPUs to the physical host's CPUs. You should also start the host with the kernel parameter `isolcpus=...`, so that the virtual machine will have dedicated CPUs. This ensures the most reliable benchmark measurements. It is also recommended to start your machine in non-graphical mode.
 

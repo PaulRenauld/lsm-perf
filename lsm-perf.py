@@ -64,6 +64,9 @@ def evaluate_kernel(kernel_path, filesystem_img_path, workload_path,
     :param keyfile: Path of the rsa key that is authorized on the image
     :param cpus: CpuAllocation for qemu and the vm's cores,
                  or None to not assign CPUs
+    :param runs: Number of measured executions of the workload
+    :param warmups: Number of unmeasured executions of the workload
+                    before starting the measurements
     :return: time measurements printed by each run of the workload
     :rtype: list[int]
     """
@@ -210,6 +213,7 @@ class VM:
     @staticmethod
     def __qemu_affinity_setup(qemu_pid, cpu_alloc):
         """Run qemu_affinity.py to allocate CPUs based on the CpuAllocation"""
+        time.sleep(0.5)  # ensure that the qemu processes started
         system_affinities = ('-p %(sys)d -i *:%(sys)d -q %(sys)d -w *:%(sys)d'
                              % {'sys': cpu_alloc.qemu_sys}).split(' ')
         kvm_affinities = ['-k', str(cpu_alloc.host_kvm0),
