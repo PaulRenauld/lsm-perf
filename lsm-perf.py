@@ -151,6 +151,7 @@ class VM:
             filesystem_img_path=filesystem_img_path,
             isolcpus=isolcpus)
         self.process = local['qemu-system-x86_64'].popen(qemu_args)
+        time.sleep(0.1)  # let the qemu processes start
         self.ssh = None
         self.key = keyfile
         if cpu_allocation:
@@ -179,6 +180,7 @@ class VM:
             self.ssh.close()
             self.ssh = None
         self.process.terminate()
+        time.sleep(0.1)  # wait for the process to exit
 
     def scp_to(self, src_local, dst_remote):
         """Send a file from the host to the VM
