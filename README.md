@@ -97,3 +97,13 @@ kernel path,round,run 0,run 1,run 2,run 3,run 4,run 5,run 6,run 7,run 8,run 9
 ../../images/paulsm,2,583044,577246,580257,586506,593093,591338,596610,579747,588739,584627
 ../../images/nolsm,2,562076,564104,570189,570115,557956,564576,574262,558895,574167,569505
 ```
+
+## Plot
+`plot.py` can be used as a template to draw a graph from the results of
+`lsm-perf.py`. It should be adapted and modified for each usecase.
+
+Plotly express (`pip install plotly-express`) and Pandas
+(`pip install pandas`) are required. 
+
+Here is an example of output produced by it:
+![plot.py example](https://gist.githubusercontent.com/PaulRenauld/fe3ee7b51121556e03c181432c8b3dd5/raw/62437b1416829ca0e8a0ed9101530bc90fd42d69/lsm-performance.png)
